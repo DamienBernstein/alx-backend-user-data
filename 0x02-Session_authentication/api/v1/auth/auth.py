@@ -1,45 +1,50 @@
 #!/usr/bin/env python3
 """
-Session Authentication
+Manage API authentication system
 """
-from typing import Dict
-from flask.globals import session
-from api.v1.auth.auth import Auth
-from models.user import User
-import uuid
+from flask import request
+from typing import List, TypeVar
+from os import getenv
 
 
-class SessionAuth(Auth):
-    """ Session class inherits Auth """
-    user_id_by_session_id: Dict[str, str] = {}
+class Auth():
+    """
+    Manage API authentication methods
+    """
+    def require_auth(self, path: str, excluded_paths: List[str]) -> bool:
+        """ Return boolean """
+        if path is None or excluded_paths is None or not len(excluded_paths):
+            return True
 
-    def create_session(self, user_id: str = None) -> str:
-        """ Session ID Generator """
-        if user_id is None or not isinstance(user_id, str):
-            return None
-        session_id = str(uuid.uuid4())
-        self.user_id_by_session_id[session_id] = user_id
-        return session_id
+        if path[-1] != '/':
+            path += '/'
+        if excluded_paths[-1] != '/':
+            excluded_paths += '/'
 
-    def user_id_for_session_id(self, session_id: str = None) -> str:
-        """ Returns session id based on user id """
-        if session_id is None or not isinstance(session_id, str):
-            return None
-        return self.user_id_by_session_id.get(session_id, None)
+        astericks = [stars[:-1]
+                     for stars in excluded_paths if stars[-1] == '*']
 
-    def current_user(self, request=None):
-        """ Returns User based cookie value """
-        cookie = self.session_cookie(request)
-        session_user_id = self.user_id_for_session_id(cookie)
-        user_id = User.get(session_user_id)
-        return user_id
+        for stars in astericks:
+            if path.startswith(stars):
+                return False
 
-    def destroy_session(self, request=None):
-        """ Deletes user session / login(out) """
-        cookie_data = self.session_cookie(request)
-        if cookie_data is None:
+        if path in excluded_paths:
             return False
-        if not self.user_id_for_session_id(cookie_data):
-            return False
-        del self.user_id_by_session_id[cookie_data]
         return True
+
+    def authorization_header(self, request=None) -> str:
+        """ Request Flask object """
+        if request is None or 'Authorization' not in request.headers:
+            return None
+        return request.headers.get('Authorization')
+
+    def current_user(self, request=None) -> TypeVar('User'):
+        """ Flask request object """
+        return None
+
+    def session_cookie(self, request=None):
+        """ Returns request cookie value """
+        if request is None:
+            return None
+        cookie = getenv('SESSION_NAME')
+        return request.cookies.get(cookie)
